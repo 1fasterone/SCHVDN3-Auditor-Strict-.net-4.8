@@ -33,6 +33,9 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<'script' | 'logs' | 'rules' | 'prompt' | 'mods'>('script');
   const [savedMods, setSavedMods] = useState<{name: string, code: string, date: string}[]>([]);
   const [showSettings, setShowSettings] = useState(false);
+  const [editingRule, setEditingRule] = useState<any | null>(null);
+  const [isAddingRule, setIsAddingRule] = useState(false);
+  const [localVerification, setLocalVerification] = useState<{line: number, message: string}[]>([]);
   const [aiConfig, setAiConfig] = useState<AIConfig>({
     provider: 'gemini',
     localUrl: 'http://localhost:1234/v1',
@@ -118,9 +121,64 @@ Current Best Practices:
   };
 
   const getLineStyles = (lineIndex: number) => {
-    if (!auditResult) return {};
-    const hasError = auditResult.errors.some(err => err.line === lineIndex + 1);
-    return hasError ? { backgroundColor: 'rgba(239, 68, 68, 0.15)', borderLeft: '2px solid #ef4444' } : {};
+    if (!auditResult && localVerification.length === 0) return {};
+    const hasAuditError = auditResult?.errors.some(err => err.line === lineIndex + 1);
+    const hasLocalError = localVerification.some(err => err.line === lineIndex + 1);
+    
+    if (hasAuditError || hasLocalError) {
+      return { backgroundColor: 'rgba(239, 68, 68, 0.15)', borderLeft: '2px solid #ef4444' };
+    }
+    return {};
+  };
+
+  const verifyLocally = () => {
+    const errors: {line: number, message: string}[] = [];
+    const lines = script.split('\n');
+    
+    ruleset.forEach((rule: any) => {
+      try {
+        const regex = new RegExp(rule.errorPattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+        lines.forEach((line, i) => {
+          if (regex.test(line)) {
+            errors.push({
+              line: i + 1,
+              message: `Local Match: ${rule.description}`
+            });
+          }
+        });
+      } catch (e) {
+        // Fallback to simple includes if regex fails
+        lines.forEach((line, i) => {
+          if (line.includes(rule.errorPattern)) {
+            errors.push({
+              line: i + 1,
+              message: `Local Match: ${rule.description}`
+            });
+          }
+        });
+      }
+    });
+    
+    setLocalVerification(errors);
+    if (errors.length === 0) {
+      alert("Local verification passed! No known patterns found.");
+    }
+  };
+
+  const deleteRule = (id: string) => {
+    if (confirm("Are you sure you want to delete this rule?")) {
+      setRuleset(prev => prev.filter((r: any) => r.id !== id));
+    }
+  };
+
+  const saveRule = (rule: any) => {
+    if (isAddingRule) {
+      setRuleset(prev => [...prev, { ...rule, id: `custom-${Date.now()}` }]);
+    } else {
+      setRuleset(prev => prev.map((r: any) => r.id === rule.id ? rule : r));
+    }
+    setEditingRule(null);
+    setIsAddingRule(false);
   };
 
   return (
@@ -327,6 +385,13 @@ Current Best Practices:
                         Save As
                       </button>
                       <button 
+                        onClick={verifyLocally}
+                        className="px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg font-bold text-sm shadow-lg transition-all flex items-center gap-2"
+                      >
+                        <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                        Verify
+                      </button>
+                      <button 
                         onClick={handleAudit}
                         disabled={isAuditing}
                         className="px-6 py-2.5 bg-orange-600 hover:bg-orange-500 disabled:bg-zinc-800 text-white rounded-lg font-bold text-sm shadow-lg shadow-orange-900/20 transition-all flex items-center gap-2"
@@ -528,10 +593,86 @@ Current Best Practices:
                 <BrainCircuit className="w-4 h-4 text-emerald-500" />
                 Auditor Knowledge
               </h2>
-              <span className="text-[10px] bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded-full font-bold">
-                {ruleset.length} Rules
-              </span>
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={() => {
+                    setIsAddingRule(true);
+                    setEditingRule({ id: '', errorPattern: '', description: '', solution: '', category: 'Custom' });
+                  }}
+                  className="p-1.5 bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 rounded transition-all"
+                  title="Add New Rule"
+                >
+                  <Plus className="w-4 h-4" />
+                </button>
+                <span className="text-[10px] bg-emerald-500/10 text-emerald-500 px-2 py-0.5 rounded-full font-bold">
+                  {ruleset.length} Rules
+                </span>
+              </div>
             </div>
+
+            {/* Rule Editor Modal/Inline */}
+            <AnimatePresence>
+              {(editingRule || isAddingRule) && (
+                <motion.div 
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="mb-6 p-4 bg-zinc-800 border border-zinc-700 rounded-xl space-y-4 shadow-2xl"
+                >
+                  <h3 className="text-xs font-bold text-white uppercase tracking-widest">
+                    {isAddingRule ? 'Add New Rule' : 'Edit Rule'}
+                  </h3>
+                  <div className="space-y-3">
+                    <input 
+                      type="text"
+                      placeholder="Error Pattern (e.g. Unexpected character '$')"
+                      value={editingRule.errorPattern}
+                      onChange={(e) => setEditingRule({ ...editingRule, errorPattern: e.target.value })}
+                      className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-300 focus:outline-none focus:border-orange-500"
+                    />
+                    <textarea 
+                      placeholder="Description"
+                      value={editingRule.description}
+                      onChange={(e) => setEditingRule({ ...editingRule, description: e.target.value })}
+                      className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-300 focus:outline-none focus:border-orange-500 h-20 resize-none"
+                    />
+                    <textarea 
+                      placeholder="Solution"
+                      value={editingRule.solution}
+                      onChange={(e) => setEditingRule({ ...editingRule, solution: e.target.value })}
+                      className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-300 focus:outline-none focus:border-orange-500 h-20 resize-none"
+                    />
+                    <select 
+                      value={editingRule.category}
+                      onChange={(e) => setEditingRule({ ...editingRule, category: e.target.value })}
+                      className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-300 focus:outline-none"
+                    >
+                      <option>Syntax</option>
+                      <option>Environment</option>
+                      <option>API</option>
+                      <option>Custom</option>
+                    </select>
+                  </div>
+                  <div className="flex gap-2">
+                    <button 
+                      onClick={() => saveRule(editingRule)}
+                      className="flex-1 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded-lg font-bold text-xs"
+                    >
+                      Save Rule
+                    </button>
+                    <button 
+                      onClick={() => {
+                        setEditingRule(null);
+                        setIsAddingRule(false);
+                      }}
+                      className="flex-1 py-2 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded-lg font-bold text-xs"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
               {ruleset.map((rule: any) => (
@@ -539,6 +680,20 @@ Current Best Practices:
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">{rule.category}</span>
                     <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                      <button 
+                        onClick={() => setEditingRule(rule)}
+                        className="p-1 hover:text-orange-500 transition-all"
+                        title="Edit Rule"
+                      >
+                        <Settings className="w-3 h-3" />
+                      </button>
+                      <button 
+                        onClick={() => deleteRule(rule.id)}
+                        className="p-1 hover:text-rose-500 transition-all"
+                        title="Delete Rule"
+                      >
+                        <AlertTriangle className="w-3 h-3" />
+                      </button>
                       <button 
                         onClick={() => addRuleToPrompt(rule)}
                         className="p-1 hover:text-emerald-500 transition-all"
