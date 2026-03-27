@@ -1,0 +1,18 @@
+{
+  "rules": [
+    {
+      "id": "shvdn-interpolation-error",
+      "errorPattern": "Unexpected character '$'",
+      "description": "String interpolation ($) is not supported by the default SHVDN3 compiler if it's using an older C# version (pre-6.0).",
+      "solution": "Replace string interpolation with string.Format() or ensure the script is compiled with C# 6.0+ support. For SHVDN3, use 'string.Format(\"Value: {0}\", value)' instead of '$\"Value: {value}\"'.",
+      "category": "Syntax"
+    },
+    {
+      "id": "shvdn-net-version",
+      "errorPattern": "Wrong .NET version",
+      "description": "SHVDN3 requires .NET Framework 4.8.",
+      "solution": "Ensure your project targets .NET Framework 4.8 and all dependencies are compatible.",
+      "category": "Environment"
+    }
+  ]
+}

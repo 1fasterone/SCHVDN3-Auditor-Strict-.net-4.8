@@ -1,0 +1,5 @@
+{
+  "name": "GTA V SHVDN3 Script Auditor",
+  "description": "An audit tool for GTA 5 modding scripts using ScriptHookVDotNet3 API, enforcing .NET 4.8 rules and learning from log errors.",
+  "requestFramePermissions": []
+}
