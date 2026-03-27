@@ -15,7 +15,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import { auditScript, learnFromLog, AuditResult } from './lib/gemini';
+import { auditScript, learnFromLog, AuditResult, AIConfig } from './lib/gemini';
 import { SHVDN3_TEMPLATE } from './lib/constants';
 import initialRuleset from './lib/ruleset.json';
 
@@ -32,6 +32,12 @@ export default function App() {
   const [isLearning, setIsLearning] = useState(false);
   const [activeTab, setActiveTab] = useState<'script' | 'logs' | 'rules' | 'prompt' | 'mods'>('script');
   const [savedMods, setSavedMods] = useState<{name: string, code: string, date: string}[]>([]);
+  const [showSettings, setShowSettings] = useState(false);
+  const [aiConfig, setAiConfig] = useState<AIConfig>({
+    provider: 'gemini',
+    localUrl: 'http://localhost:1234/v1',
+    modelName: 'lmstudio-community/Meta-Llama-3-8B-Instruct-GGUF'
+  });
 
   const [systemPrompt, setSystemPrompt] = useState(`You are a strict GTA V ScriptHookVDotNet3 (SHVDN3) expert. 
 Your goal is to write C# scripts that are 100% compatible with .NET Framework 4.8.
@@ -43,7 +49,7 @@ Current Best Practices:
   const handleAudit = async () => {
     setIsAuditing(true);
     try {
-      const result = await auditScript(script, ruleset);
+      const result = await auditScript(script, ruleset, aiConfig);
       setAuditResult(result);
       
       // Update System Prompt with new findings
@@ -56,6 +62,7 @@ Current Best Practices:
       }
     } catch (error) {
       console.error('Audit failed:', error);
+      alert(`Audit failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsAuditing(false);
     }
@@ -65,11 +72,12 @@ Current Best Practices:
     if (!log.trim()) return;
     setIsLearning(true);
     try {
-      const updatedRules = await learnFromLog(log, ruleset);
+      const updatedRules = await learnFromLog(log, ruleset, aiConfig);
       setRuleset(updatedRules);
       setActiveTab('rules');
     } catch (error) {
       console.error('Learning failed:', error);
+      alert(`Learning failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsLearning(false);
     }
@@ -138,7 +146,13 @@ Current Best Practices:
               Reset Template
             </button>
             <div className="h-4 w-px bg-zinc-800" />
-            <button className="p-2 text-zinc-400 hover:text-white transition-colors">
+            <button 
+              onClick={() => setShowSettings(!showSettings)}
+              className={cn(
+                "p-2 transition-colors",
+                showSettings ? "text-orange-500" : "text-zinc-400 hover:text-white"
+              )}
+            >
               <Settings className="w-5 h-5" />
             </button>
           </div>
@@ -146,6 +160,88 @@ Current Best Practices:
       </header>
 
       <main className="max-w-7xl mx-auto px-6 py-8 grid grid-cols-1 lg:grid-cols-12 gap-8">
+        {/* Settings Overlay */}
+        <AnimatePresence>
+          {showSettings && (
+            <motion.div 
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="lg:col-span-12 overflow-hidden"
+            >
+              <div className="bg-zinc-900/80 border border-zinc-800 rounded-xl p-6 mb-8 backdrop-blur-xl">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-sm font-bold text-white uppercase tracking-widest flex items-center gap-2">
+                    <Settings className="w-4 h-4 text-orange-500" />
+                    AI Engine Configuration
+                  </h2>
+                  <button onClick={() => setShowSettings(false)} className="text-zinc-500 hover:text-white">
+                    <Plus className="w-4 h-4 rotate-45" />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Provider</label>
+                    <div className="flex bg-zinc-950 rounded-lg p-1 border border-zinc-800">
+                      <button 
+                        onClick={() => setAiConfig({ ...aiConfig, provider: 'gemini' })}
+                        className={cn(
+                          "flex-1 py-2 text-xs font-bold rounded-md transition-all",
+                          aiConfig.provider === 'gemini' ? "bg-orange-600 text-white" : "text-zinc-500 hover:text-zinc-300"
+                        )}
+                      >
+                        Gemini (Cloud)
+                      </button>
+                      <button 
+                        onClick={() => setAiConfig({ ...aiConfig, provider: 'local' })}
+                        className={cn(
+                          "flex-1 py-2 text-xs font-bold rounded-md transition-all",
+                          aiConfig.provider === 'local' ? "bg-orange-600 text-white" : "text-zinc-500 hover:text-zinc-300"
+                        )}
+                      >
+                        LM Studio (Local)
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Base URL</label>
+                    <input 
+                      type="text"
+                      value={aiConfig.localUrl}
+                      onChange={(e) => setAiConfig({ ...aiConfig, localUrl: e.target.value })}
+                      disabled={aiConfig.provider === 'gemini'}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-xs text-zinc-300 focus:outline-none focus:border-orange-500 disabled:opacity-50"
+                      placeholder="http://localhost:1234/v1"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest">Model Name</label>
+                    <input 
+                      type="text"
+                      value={aiConfig.modelName}
+                      onChange={(e) => setAiConfig({ ...aiConfig, modelName: e.target.value })}
+                      disabled={aiConfig.provider === 'gemini'}
+                      className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-4 py-2 text-xs text-zinc-300 focus:outline-none focus:border-orange-500 disabled:opacity-50"
+                      placeholder="model-identifier"
+                    />
+                  </div>
+                </div>
+                
+                {aiConfig.provider === 'local' && (
+                  <div className="mt-4 p-3 bg-orange-500/5 border border-orange-500/20 rounded-lg">
+                    <p className="text-[10px] text-orange-500/80 leading-relaxed">
+                      <strong>Note:</strong> Ensure LM Studio's Local Server is running and CORS is enabled. 
+                      The default URL is usually <code>http://localhost:1234/v1</code>.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         {/* Left Column: Editor & Logs */}
         <div className="lg:col-span-7 space-y-6">
           <div className="bg-zinc-900/50 border border-zinc-800 rounded-xl overflow-hidden shadow-2xl">
